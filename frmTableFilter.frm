@@ -1,26 +1,53 @@
+VERSION 5.00
+Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} frmTableFilter 
+   Caption         =   "UserForm1"
+   ClientHeight    =   2312
+   ClientLeft      =   0
+   ClientTop       =   128
+   ClientWidth     =   7280
+   OleObjectBlob   =   "frmTableFilter.frx":0000
+   StartUpPosition =   1  'CenterOwner
+End
+Attribute VB_Name = "frmTableFilter"
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = True
+Attribute VB_Exposed = False
 Option Explicit
+Implements IFormTableFilter
 
 Private controlsGroup(1 To 4) As clsTableFilter
+Attribute controlsGroup.VB_VarHelpID = -1
+Const sheetName As String = "Sheet Name With Spaces"
 
 Private Function GetRange() As Range
     Dim ws As Worksheet
     Dim r As Range
-    Set ws = Worksheets("Sheet Name With Spaces")
+    Set ws = Worksheets(sheetName)
     Set GetRange = ws.Range("B1:E1")
 End Function
 
-Public Sub TextboxChange(txt As MSForms.TextBox, ByVal control_index As Integer, ByVal column_index As Integer)
+Public Sub IFormTableFilter_TextboxChange(txt As MSForms.TextBox, ByVal control_index As Integer, ByVal column_index As Integer)
     ApplyFilter txt.Text, control_index, column_index
 End Sub
 
-Public Sub CheckboxClick(chk As MSForms.CheckBox, ByVal control_index As Integer, ByVal column_index As Integer)
+Public Sub IFormTableFilter_CheckboxClick(chk As MSForms.CheckBox, ByVal control_index As Integer, ByVal column_index As Integer)
     ToggleCheckbox control_index
 End Sub
 
 Private Sub UserForm_Initialize()
+    Me.Caption = "Table Filter (" + sheetName + ")"
+    
+    Dim isSheetNameValid As Boolean
+    validateSheetname sheetName
+    If Not isSheetNameValid Then
+        Exit Sub
+    End If
+
     Dim i As Integer
     For i = LBound(controlsGroup) To UBound(controlsGroup)
         Set controlsGroup(i) = New clsTableFilter
+        controlsGroup(i).control_index_ = i
     Next i
     
     controlsGroup(1).Init Me, lblItem1, txtItem1, chkItem1, 1
@@ -33,8 +60,24 @@ Private Sub UserForm_Initialize()
     For i = LBound(controlsGroup) To UBound(controlsGroup)
         controlsGroup(i).lbl_.Caption = r.Cells(1, controlsGroup(i).column_index_)
     Next i
-    
+        
 End Sub
+
+Private Function validateSheetname(ByVal sheetName As String) As Boolean
+    Dim sheet As Worksheet
+    Dim sheetFound As Boolean
+    sheetFound = False
+    
+    For Each sheet In ThisWorkbook.Sheets
+        If sheet.Name = sheetName Then
+            sheetFound = True
+        End If
+    Next sheet
+    
+    If Not sheetFound Then
+        MsgBox "Sheet not found : " + sheetName, vbCritical
+    End If
+End Function
 
 Private Sub cmdClear_Click()
     ClearFilters
@@ -42,7 +85,7 @@ End Sub
 
 Public Sub ClearFilters()
     Dim ws As Worksheet
-    Set ws = Worksheets("Sheet Name With Spaces")
+    Set ws = Worksheets(sheetName)
 
     On Error Resume Next
     ws.ShowAllData
