@@ -1,6 +1,10 @@
 Attribute VB_Name = "ImportExport"
 ' From http://www.rondebruin.nl/win/s9/win002.htm
 
+' ImportModules Requirements
+' Microsoft Scripting Runtime
+' Microsoft Visual Basic for Applications Extensability 5.3
+
 Public Sub ExportModules()
     Dim bExport As Boolean
     Dim wkbSource As Excel.Workbook

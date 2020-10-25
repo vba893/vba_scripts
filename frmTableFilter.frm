@@ -1,9 +1,9 @@
 VERSION 5.00
 Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} frmTableFilter 
    Caption         =   "UserForm1"
-   ClientHeight    =   2312
+   ClientHeight    =   2310
    ClientLeft      =   0
-   ClientTop       =   128
+   ClientTop       =   130
    ClientWidth     =   7280
    OleObjectBlob   =   "frmTableFilter.frx":0000
    StartUpPosition =   1  'CenterOwner
