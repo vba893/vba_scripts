@@ -39,7 +39,7 @@ Public Sub Initialize(ByRef ws As Worksheet, ByRef columnsMapping() As Collectio
         Set controlsGroup(i) = CreateControlGroup(i)
     Next i
     
-    For i = UBound(columnFilters) To UBound(controlsGroup)
+    For i = UBound(columnFilters) + 1 To UBound(controlsGroup)
         controlsGroup(i).CheckBox.Locked = True
         controlsGroup(i).TextBox.Locked = True
     Next i
