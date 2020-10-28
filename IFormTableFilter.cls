@@ -9,10 +9,10 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 Option Explicit
 
-Public Sub TextboxChange(txt As MSForms.TextBox, ByVal control_index As Integer, ByVal column_index As Integer)
+Public Sub TextboxChange(obj As clsFormControlGroup)
 
 End Sub
 
-Public Sub CheckboxClick(chk As MSForms.CheckBox, ByVal control_index As Integer, ByVal column_index As Integer)
+Public Sub CheckboxClick(obj As clsFormControlGroup)
 
 End Sub
