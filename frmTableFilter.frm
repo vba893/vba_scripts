@@ -17,8 +17,10 @@ Option Explicit
 Implements IFormTableFilter
 
 Const MAX_FILTERS As Integer = 6
-'Const SHEETNAME As String = "Sheet Name With Spaces"
 Const ANY_CELL_IN_TABLE As String = "C1"
+
+Public Event FilterChanged(ByRef rng As Range)
+Public Event AcceptSelection(ByVal selected_row As Integer)
 
 Private controlsGroup(1 To MAX_FILTERS) As clsFormControlGroup
 Private columnFilters() As Collection
@@ -175,6 +177,30 @@ End Sub
 
 Public Sub IFormTableFilter_CheckboxClick(obj As clsFormControlGroup)
     ToggleCheckbox obj
+End Sub
+
+Public Sub IFormTableFilter_TextboxEnterKeyDown(obj As clsFormControlGroup)
+    ' Detect which row is first
+    Dim cl As Range
+    Dim rng As Range
+    Set rng = GetRange()
+    
+    Dim row As Integer
+    For Each cl In rng.Rows
+        If cl.row > 1 Then
+            If cl.EntireRow.Hidden = False Then
+                row = cl.row
+                Exit For
+            End If
+        End If
+    Next
+
+    RaiseEvent AcceptSelection(row)
+    ClearFilters
+End Sub
+
+Public Sub IFormTableFilter_TextboxEscapeKeyDown(obj As clsFormControlGroup)
+    Me.Hide
 End Sub
 
 Private Sub cmdClear_Click()

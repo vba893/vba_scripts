@@ -16,3 +16,11 @@ End Sub
 Public Sub CheckboxClick(obj As clsFormControlGroup)
 
 End Sub
+
+Public Sub TextboxEnterKeyDown(obj As clsFormControlGroup)
+
+End Sub
+
+Public Sub TextboxEscapeKeyDown(obj As clsFormControlGroup)
+
+End Sub

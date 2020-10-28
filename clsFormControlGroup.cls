@@ -25,6 +25,7 @@ Public Sub Init(ByRef table_filter As IFormTableFilter, ByRef lbl As MSForms.Lab
     Set txt_ = txt
     Set chk_ = chk
     
+    txt_.EnterKeyBehavior = False
     control_index_ = control_index
 End Sub
 
@@ -56,3 +57,13 @@ End Sub
 Private Sub chk__Click()
     table_filter_.CheckboxClick Me
 End Sub
+
+Private Sub txt__KeyDown(ByVal KeyCode As MSForms.ReturnInteger, ByVal Shift As Integer)
+    If KeyCode = vbKeyReturn Then
+        table_filter_.TextboxEnterKeyDown Me
+        KeyCode = 0
+    ElseIf KeyCode = vbKeyEscape Then
+        table_filter_.TextboxEscapeKeyDown Me
+    End If
+End Sub
+
