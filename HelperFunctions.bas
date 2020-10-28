@@ -37,8 +37,8 @@ Public Function QuickFind(ByVal item As String) As String
     
     StartTick = GetTickCount()
 
-    Set r1 = Range("A2:A" & Cells(Rows.count, "A").End(xlUp).Row)
-    Set r2 = Range("B2:B" & Cells(Rows.count, "B").End(xlUp).Row)
+    Set r1 = Range("A2:A" & Cells(Rows.count, "A").End(xlUp).row)
+    Set r2 = Range("B2:B" & Cells(Rows.count, "B").End(xlUp).row)
 
     varray1 = r1.Value
     varray2 = r2.Value

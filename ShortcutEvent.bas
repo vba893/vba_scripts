@@ -1,4 +1,6 @@
 Attribute VB_Name = "ShortcutEvent"
+Option Explicit
+
 Private monitor As clsMonitorTableFilter
 
 Sub CreateShortcutListener()
@@ -9,4 +11,3 @@ Public Sub CtrlEnterKeyPressed()
     Set monitor = New clsMonitorTableFilter
     monitor.Initialize Application.Worksheets("Sheet Name With Spaces")
 End Sub
-

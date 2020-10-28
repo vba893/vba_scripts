@@ -48,10 +48,10 @@ Public Sub Initialize(ByRef ws As Worksheet, ByRef columnsMapping() As Collectio
     
     HideUnusedControls
     InitializeFiltersName
-    RedimForm
+    ResizeForm
 End Sub
 
-Private Sub RedimForm()
+Private Sub ResizeForm()
     Dim lastControlIndex As Integer
     lastControlIndex = UBound(columnFilters) + 1
     
@@ -125,8 +125,6 @@ Private Sub InitializeFiltersName()
     Next i
 End Sub
 
-
-
 Private Function CreateControlGroup(ByVal index As Integer) As clsFormControlGroup
     Set CreateControlGroup = New clsFormControlGroup
     
@@ -197,10 +195,20 @@ Public Sub IFormTableFilter_TextboxEnterKeyDown(obj As clsFormControlGroup)
 
     RaiseEvent AcceptSelection(row)
     ClearFilters
+    FocusFirstTextbox
 End Sub
 
 Public Sub IFormTableFilter_TextboxEscapeKeyDown(obj As clsFormControlGroup)
     Me.Hide
+End Sub
+
+Private Sub FocusFirstTextbox()
+    Dim ctrl As Control
+    For Each ctrl In Me.Controls
+        If ctrl.name = "txtItem1" Then
+            ctrl.SetFocus
+        End If
+    Next ctrl
 End Sub
 
 Private Sub cmdClear_Click()
@@ -281,6 +289,7 @@ Private Sub ApplyFilter(ByVal filter As String, ByVal control_index As Integer)
         Next i
         On Error GoTo 0
     End If
+       
 End Sub
 
 Private Function RemoveEmptyField(ByRef arr() As String)
