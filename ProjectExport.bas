@@ -40,7 +40,7 @@ Public Sub ExportModules()
     End With
     
     ' Exit if no folder selected or user canceled
-    If fd.SelectedItems.Count = 0 Then Return
+    If fd.SelectedItems.Count = 0 Then Exit Sub
 
     ''' NOTE: This workbook must be open in Excel.
     Set wkbSource = Application.ThisWorkbook

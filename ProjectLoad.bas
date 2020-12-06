@@ -1,13 +1,12 @@
 Attribute VB_Name = "ProjectLoad"
 Option Explicit
-
 Public Sub LoadProject()
     ' OpenDialog
     Dim strFolderExists As String
     Dim fd As Office.FileDialog
     Dim importPath As String, myFile As String
     Set fd = Application.FileDialog(msoFileDialogFilePicker)
-        
+    
     ' Check if all references exists
     AddAllExternalReferences
         
@@ -38,10 +37,10 @@ Public Sub LoadProject()
         End If
     End With
     
-    importPath = GetDirectoryName(myFile)
-    
     ' Exit if no file selected or user canceled
     If fd.SelectedItems.Count = 0 Then Return
+    
+    importPath = GetDirectoryName(myFile)
     
     ' ReadFileContent
     Dim lines() As String
@@ -51,7 +50,6 @@ Public Sub LoadProject()
     ImportFileOrExecuteCommand importPath, lines
     
     MsgBox "Project '" & myFile & "' loaded !", vbInformation
-    
 End Sub
 
 Private Function GetDirectoryName(ByVal fullname As String) As String
