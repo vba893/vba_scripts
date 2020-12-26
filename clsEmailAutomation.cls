@@ -9,7 +9,7 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ' Credit : http://learnexcelmacro.com/wp/2016/12/image-in-signature-not-displayed-mail-sent-by-vba/
 Option Explicit
-Public WithEvents OutMail As Outlook.MailItem
+Private WithEvents OutMail As Outlook.MailItem
 Attribute OutMail.VB_VarHelpID = -1
 
 Enum MailUserAction
@@ -32,13 +32,14 @@ Private Const columnBody            As String = "E"
 Private Const columnAttachments     As String = "F"
 Private Const columnSendStatus      As String = "G"
 
-Private selectedSignature As String
 Private signatureHtml As String
 Private ws As Worksheet
-Private sendOnBehalf As String
 
-Private columnNames As Collection
-Private currentRowValues As Collection
+Private columnsHeader As Collection
+Private columnsTo As Collection
+Private columnsCC As Collection
+Private columnsBCC As Collection
+
 Private currentMailUserAction As MailUserAction
 Private selectedAccount As Outlook.Account
 
@@ -55,21 +56,47 @@ Public Function SetSignature(ByVal signatureName As String, ByVal confirmSignatu
     End If
 End Function
 
-Public Function SendUsingSpecificAccount(ByVal accountName As String) As Boolean
-    Private oAccount As Outlook.Account
+Public Function SendUsingSpecificAccount(ByVal accountName As String, Optional showError As Boolean = True) As Boolean
+    Dim oOutlook As Outlook.Application
+    Dim oAccount As Outlook.Account
+    Set oOutlook = CreateObject("Outlook.Application")
     
-    For Each oAccount In Application.Session.Accounts
-        If oAccount = accountName Then
+    For Each oAccount In oOutlook.Session.Accounts
+        If oAccount.DisplayName = accountName Then
             Set selectedAccount = oAccount
             SendUsingSpecificAccount = True
             Exit Function
         End If
     Next
     
+    If showError Then
+        MsgBox "Unable to find account name '" & accountName & "'", vbCritical + vbOKOnly, "Invalid account name"
+    End If
+    
     SendUsingSpecificAccount = False
 End Function
 
+Public Sub PrintAvailableAccounts()
+    Dim oOutlook As Outlook.Application
+    Dim oAccount As Outlook.Account
+    Set oOutlook = CreateObject("Outlook.Application")
+    Dim itemCount As Integer
+    
+    Debug.Print "---------------------------------------------------"
+    Debug.Print " Available account names : "
+    
+    itemCount = 0
+    For Each oAccount In oOutlook.Session.Accounts
+        itemCount = itemCount + 1
+        Debug.Print " Accounts(" & CStr(itemCount) & ") = " & oAccount.DisplayName
+    Next
+    
+    Debug.Print "---------------------------------------------------"
+End Sub
+
 Public Sub ForAllRows(ByRef sourceWorksheet As Worksheet)
+    Dim isAlreadySent As Boolean
+    Dim isHeaderRow As Boolean
     Dim OutApp As Object
     Dim continueWithNextSend As Boolean
     Set OutApp = CreateObject("Outlook.Application")
@@ -81,12 +108,18 @@ Public Sub ForAllRows(ByRef sourceWorksheet As Worksheet)
        
     For Each r In rng.Rows
         DebugCellsValue r
-        If r.row > 1 And Trim(r.Columns(columnSendStatus).text) = "" Then
-            continueWithNextSend = SendEmail(OutApp, r)
-            If continueWithNextSend = False Then
-                Exit Sub
-            End If
+        isAlreadySent = Trim(r.Columns(columnSendStatus).text) <> ""
+        isHeaderRow = (r.row = 1)
+        
+        If isHeaderRow Or isAlreadySent Then
+            GoTo ContinueLoop
         End If
+        
+        continueWithNextSend = SendEmail(OutApp, r)
+        If continueWithNextSend = False Then
+            Exit Sub
+        End If
+ContinueLoop:
     Next r
    
 End Sub
@@ -161,10 +194,13 @@ Private Function SendEmail(ByRef outlookApp As Object, ByRef currentRow As Range
     currentMailUserAction = Unknown
     On Error Resume Next
     With OutMail
-        If sendOnBehalf <> "" Then
-            ' Macros to send messages using a specific account
-            ' https://www.slipstick.com/developer/send-using-default-or-specific-account/
-            .SentOnBehalfOfName = sendOnBehalf
+'        If sendOnBehalf <> "" Then
+'            ' Macros to send messages using a specific account
+'            ' https://www.slipstick.com/developer/send-using-default-or-specific-account/
+'            .SentOnBehalfOfName = sendOnBehalf
+'        End If
+        If Not selectedAccount Is Nothing Then
+            .SendUsingAccount = selectedAccount
         End If
         .Subject = currentRow.Columns(columnSubject).value
         .HTMLBody = fieldBody & lineBreak & lineBreak & signatureHtml
@@ -384,7 +420,7 @@ Private Function LoadSignature(ByVal Signature As String) As Boolean
     End If
 End Function
 
-Function ReadFileContent(ByVal sFile As String) As String
+Private Function ReadFileContent(ByVal sFile As String) As String
 'Dick Kusleika
     Dim fso As Object
     Dim ts As Object
