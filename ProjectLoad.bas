@@ -224,7 +224,7 @@ End Function
 'AddLib: Adds a library reference to this script programmatically, so that
 '        libraries do not need to be added manually.
 '******************************************************************************
-Private Function AddReference(libName As String, GUID As String, major As Long, minor As Long)
+Public Function AddReference(libName As String, guid As String, major As Long, minor As Long)
 
     Dim exObj As Object: Set exObj = GetObject(, "Excel.Application")
     Dim vbProj As Object: Set vbProj = exObj.ActiveWorkbook.VBProject
@@ -238,28 +238,59 @@ Private Function AddReference(libName As String, GUID As String, major As Long, 
         End If
     Next
 
-    vbProj.References.AddFromGuid GUID, major, minor
+    vbProj.References.AddFromGuid guid, major, minor
 
 CleanUp:
     Set vbProj = Nothing
 End Function
 
-Private Sub AddAllExternalReferences()
-    AddScriptingLibraryReference
-    AddVBELibraryReference
-End Sub
-
-Private Function AddScriptingLibraryReference() As Boolean
-    ' Add Microsoft Scripting Runtime
-    Const GUID As String = "{420B2830-E718-11CF-893D-00A0C9054228}"
+Public Function ListAllReference()
+    Dim exObj As Object: Set exObj = GetObject(, "Excel.Application")
+    Dim vbProj As VBProject: Set vbProj = exObj.ActiveWorkbook.VBProject
+    Dim chkRef As Object
+    Dim nameLen As Integer
+    Const colWidth As Integer = 20
     
-    AddReference "Scripting", GUID, 1, 0
+    For Each chkRef In vbProj.References
+        nameLen = Len(chkRef.Name)
+        
+        Debug.Print "GUID " & chkRef.guid & " Name: " & chkRef.Name & Space(colWidth - Application.Min(nameLen, colWidth - 1)) & " Description: " & chkRef.Description
+    Next
+    
+    Set vbProj = Nothing
 End Function
 
-Private Sub AddVBELibraryReference()
-    'Add VBIDE (Microsoft Visual Basic for Applications Extensibility 5.3)
-    Const GUID As String = "{0002E157-0000-0000-C000-000000000046}"
+Public Sub AddAllExternalReferences()
+    Add_ScriptingLibraryReference
+    Add_VBELibraryReference
+    Add_VBScriptRegularExpressionsReference
+End Sub
+
+Public Function Add_VBScriptRegularExpressionsReference() As Boolean
+    ' Add Microsoft VBScript Regular Expressions 5.5
+    Const guid As String = "{3F4DACA7-160D-11D2-A8E9-00104B365C9F}"
     
-    AddReference "VBIDE", GUID, 1, 0
+    AddReference "VBScript_RegExp_55", guid, 1, 0
+End Function
+
+Public Function Add_OutlookReference() As Boolean
+    ' Add Microsoft Outlook 16.0 Object Library
+    Const guid As String = "{00062FFF-0000-0000-C000-000000000046}"
+    
+    AddReference "Outlook", guid, 1, 0
+End Function
+
+Public Function Add_ScriptingLibraryReference() As Boolean
+    ' Add Microsoft Scripting Runtime
+    Const guid As String = "{420B2830-E718-11CF-893D-00A0C9054228}"
+    
+    AddReference "Scripting", guid, 1, 0
+End Function
+
+Public Sub Add_VBELibraryReference()
+    'Add VBIDE (Microsoft Visual Basic for Applications Extensibility 5.3)
+    Const guid As String = "{0002E157-0000-0000-C000-000000000046}"
+    
+    AddReference "VBIDE", guid, 1, 0
 End Sub
 
