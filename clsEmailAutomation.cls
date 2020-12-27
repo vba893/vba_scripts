@@ -9,8 +9,9 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ' Credit : http://learnexcelmacro.com/wp/2016/12/image-in-signature-not-displayed-mail-sent-by-vba/
 Option Explicit
-Private WithEvents OutMail As Outlook.MailItem
-Attribute OutMail.VB_VarHelpID = -1
+Private WithEvents oMailItem As Outlook.MailItem
+Attribute oMailItem.VB_VarHelpID = -1
+Private WithEvents oOutlook As Outlook.Application
 
 Enum MailUserAction
     Unknown = 0
@@ -18,27 +19,26 @@ Enum MailUserAction
     Send = 2
 End Enum
 
-Enum RecipientType
-    Field_To = OlMailRecipientType.olTo
-    Field_CC = OlMailRecipientType.olCC
-    Field_BCC = OlMailRecipientType.olBCC
+Enum FieldType
+    eRecipient_To = 0
+    eRecipient_CC
+    eRecipient_BCC
+    eSubject
+    eBody
+    eAttachments
+    eStatus
+    eCustomField
 End Enum
 
-Private Const columnTo              As String = "A"
-Private Const columnCC              As String = "B"
-Private Const columnBCC             As String = "C"
-Private Const columnSubject         As String = "D"
-Private Const columnBody            As String = "E"
-Private Const columnAttachments     As String = "F"
-Private Const columnSendStatus      As String = "G"
+Private Type StateData
+    CityCode(1 To 100) As Integer     ' Declare a static array.
+    County As String * 30
+End Type
+
+Private columnHeaderTypes As Collection
 
 Private signatureHtml As String
 Private ws As Worksheet
-
-Private columnsHeader As Collection
-Private columnsTo As Collection
-Private columnsCC As Collection
-Private columnsBCC As Collection
 
 Private currentMailUserAction As MailUserAction
 Private selectedAccount As Outlook.Account
@@ -57,9 +57,10 @@ Public Function SetSignature(ByVal signatureName As String, ByVal confirmSignatu
 End Function
 
 Public Function SendUsingSpecificAccount(ByVal accountName As String, Optional showError As Boolean = True) As Boolean
-    Dim oOutlook As Outlook.Application
     Dim oAccount As Outlook.Account
-    Set oOutlook = CreateObject("Outlook.Application")
+    If oOutlook Is Nothing Then
+        Set oOutlook = CreateObject("Outlook.Application")
+    End If
     
     For Each oAccount In oOutlook.Session.Accounts
         If oAccount.DisplayName = accountName Then
@@ -77,9 +78,10 @@ Public Function SendUsingSpecificAccount(ByVal accountName As String, Optional s
 End Function
 
 Public Sub PrintAvailableAccounts()
-    Dim oOutlook As Outlook.Application
     Dim oAccount As Outlook.Account
-    Set oOutlook = CreateObject("Outlook.Application")
+    If oOutlook Is Nothing Then
+        Set oOutlook = CreateObject("Outlook.Application")
+    End If
     Dim itemCount As Integer
     
     Debug.Print "---------------------------------------------------"
@@ -97,25 +99,31 @@ End Sub
 Public Sub ForAllRows(ByRef sourceWorksheet As Worksheet)
     Dim isAlreadySent As Boolean
     Dim isHeaderRow As Boolean
-    Dim OutApp As Object
     Dim continueWithNextSend As Boolean
-    Set OutApp = CreateObject("Outlook.Application")
+    
+    If oOutlook Is Nothing Then
+        Set oOutlook = CreateObject("Outlook.Application")
+    End If
+    
     Set ws = sourceWorksheet
     
     Dim rng As Range
     Set rng = ws.UsedRange
     Dim r As Range
-       
+    
+    parseFieldsType
+    validateExpectedMinimumFields
+    
     For Each r In rng.Rows
-        DebugCellsValue r
-        isAlreadySent = Trim(r.Columns(columnSendStatus).text) <> ""
+        isAlreadySent = Trim(r.columns(getFieldTypeIndex(eStatus)).text) <> ""
         isHeaderRow = (r.row = 1)
         
         If isHeaderRow Or isAlreadySent Then
             GoTo ContinueLoop
         End If
         
-        continueWithNextSend = SendEmail(OutApp, r)
+        DebugCellsValue r
+        continueWithNextSend = SendEmail(r)
         If continueWithNextSend = False Then
             Exit Sub
         End If
@@ -125,10 +133,11 @@ ContinueLoop:
 End Sub
 
 Private Function ConfirmEmailSignature() As Boolean
-    Dim OutApp As Outlook.Application
-    Set OutApp = New Outlook.Application
-    Set OutMail = OutApp.CreateItem(0)
-    With OutMail
+    If oOutlook Is Nothing Then
+        Set oOutlook = CreateObject("Outlook.Application")
+    End If
+    Set oMailItem = oOutlook.CreateItem(0)
+    With oMailItem
         .Subject = "Make sure the selected email signature is the right one. All emails will be sent using this signature"
         .HTMLBody = signatureHtml
         .Display True
@@ -136,64 +145,83 @@ Private Function ConfirmEmailSignature() As Boolean
      
     Dim response
     response = MsgBox("Do you want to send all emails using the following signature ?", vbQuestion + vbYesNo, "Signature selection")
-    If response <> vbYes Then
-        ConfirmEmailSignature = False
-    End If
-    ConfirmEmailSignature = True
+    ConfirmEmailSignature = (response = vbYes)
 End Function
 
 Private Sub DebugCellsValue(ByRef rng As Range)
     Debug.Print "------------------------------------------------------------------------------"
-    Debug.Print "Row    : " & Str(rng.row)
-    Debug.Print "To     : " & rng.Columns(columnTo).value
-    Debug.Print "CC     : " & rng.Columns(columnCC).value
-    Debug.Print "BCC    : " & rng.Columns(columnBCC).value
-    Debug.Print "Subject: " & rng.Columns(columnSubject).value
-    Debug.Print "Body   : " & rng.Columns(columnBody).value
-    Debug.Print "Files  : " & rng.Columns(columnAttachments).value
-    Debug.Print "Status : " & rng.Columns(columnSendStatus).value
+        
+    Dim columnsIndexes() As Integer
+    
+    Debug.Print "Row" & Space(15 - Len("Row")) & " : " & CStr(rng.row)
+    DebugFieldType rng, eRecipient_To
+    DebugFieldType rng, eRecipient_CC
+    DebugFieldType rng, eRecipient_BCC
+    DebugFieldType rng, eSubject
+    DebugFieldType rng, eBody
+    DebugFieldType rng, eAttachments
+    DebugFieldType rng, eStatus
 End Sub
 
-Private Function SendEmail(ByRef outlookApp As Object, ByRef currentRow As Range) As Boolean
-    Set OutMail = outlookApp.CreateItem(0)
+Private Sub DebugFieldType(ByRef rng As Range, ByVal ft As FieldType)
+    Dim idx As Variant
+    Dim columnsIndexes() As Integer
+    Dim fieldName As String
+    Dim text As String
+    
+    columnsIndexes = getFields(ft)
+    fieldName = FieldTypeToString(ft)
+    If ArraySize(columnsIndexes) > 0 Then
+        For Each idx In columnsIndexes
+            text = rng.columns(idx).value
+            Select Case ft
+            Case eRecipient_To, eRecipient_CC, eRecipient_BCC, eAttachments
+                text = Join(SplitRe(rng.columns(idx).value, "[,;\n]"), ";")
+            End Select
+            
+            Debug.Print fieldName & Space(15 - Len(fieldName)) & " : " & text
+        Next idx
+    End If
+End Sub
+
+Private Function SendEmail(ByRef currentRow As Range) As Boolean
+    Set oMailItem = oOutlook.CreateItem(0)
     Dim fieldBody As String
     Dim lineBreak As String
     Dim fillTemplate As New clsReplaceMessageFields
     Dim wasSent As Boolean
+    Dim columnIndex As Integer
+    Dim ft As FieldType
     
     SendEmail = True
     
     lineBreak = "<br/>"
     
-    fieldBody = currentRow.Columns(columnBody).text
-    fieldBody = Replace(Replace(currentRow.Columns(columnBody).value, vbCr, lineBreak), vbLf, lineBreak)
+    fieldBody = Replace(Replace(currentRow.columns(getFieldTypeIndex(eBody)).value, vbCr, lineBreak), vbLf, lineBreak)
     fieldBody = fillTemplate.ParseTemplateMessage(ws, fieldBody, currentRow.row)
     
-    If addAttachments(OutMail, currentRow) = False Then
-        Exit Function
-    End If
-    
-    If addRecipients(OutMail, currentRow, Field_To) = False Then
-        Exit Function
-    End If
-    
-    If addRecipients(OutMail, currentRow, Field_CC) = False Then
-        Exit Function
-    End If
-    
-    If addRecipients(OutMail, currentRow, Field_BCC) = False Then
-        Exit Function
-    End If
+    For columnIndex = 1 To columnHeaderTypes.Count
+        Select Case columnHeaderTypes(columnIndex)
+        Case eRecipient_To, eRecipient_CC, eRecipient_BCC
+            If addRecipients(currentRow, columnIndex) = False Then
+                Exit Function
+            End If
+        Case eAttachments
+            If addAttachments(currentRow, columnIndex) = False Then
+                Exit Function
+            End If
+        End Select
+    Next columnIndex
     
     Dim oRecip As Outlook.recipient
-    For Each oRecip In OutMail.recipients
+    For Each oRecip In oMailItem.recipients
         oRecip.Resolve
-        Debug.Print mailRecipientTypeToString(oRecip.Type) & " -> " & oRecip.Address
+'        Debug.Print mailRecipientTypeToString(oRecip.Type) & " -> " & oRecip.Address
     Next
     
     currentMailUserAction = Unknown
     On Error Resume Next
-    With OutMail
+    With oMailItem
 '        If sendOnBehalf <> "" Then
 '            ' Macros to send messages using a specific account
 '            ' https://www.slipstick.com/developer/send-using-default-or-specific-account/
@@ -202,7 +230,7 @@ Private Function SendEmail(ByRef outlookApp As Object, ByRef currentRow As Range
         If Not selectedAccount Is Nothing Then
             .SendUsingAccount = selectedAccount
         End If
-        .Subject = currentRow.Columns(columnSubject).value
+        .Subject = currentRow.columns(getFieldTypeIndex(eSubject)).value
         .HTMLBody = fieldBody & lineBreak & lineBreak & signatureHtml
         
         '.Send   'or use .Display
@@ -216,31 +244,33 @@ Private Function SendEmail(ByRef outlookApp As Object, ByRef currentRow As Range
     Dim result As VbMsgBoxResult
     Dim msg As String
     If currentMailUserAction = Canceled Then
-        msg = msg & "Do you want to continue sending emails ?" + vbCrLf + vbCrLf
-        msg = msg & "Press YES to continue sending the remaining emails." + vbCrLf
-        msg = msg & "Press NO to cancel the process."
-        
-        result = MsgBox(msg, vbYesNo + vbQuestion + vbSystemModal, "Continue or abort process")
-        If result = vbNo Then
-            SendEmail = False
-            Exit Function
-        End If
+'        msg = msg & "Do you want to continue sending emails ?" + vbCrLf + vbCrLf
+'        msg = msg & "Press YES to continue sending the remaining emails." + vbCrLf
+'        msg = msg & "Press NO to cancel the process."
+'
+'        result = MsgBox(msg, vbYesNo + vbQuestion + vbSystemModal, "Continue or abort process")
+'        If result = vbNo Then
+'            SendEmail = False
+'            Exit Function
+'        End If
+        SendEmail = False
+        Exit Function
     End If
        
     If currentMailUserAction = Send Then
-        currentRow.Columns(columnSendStatus).value = Now()
+        currentRow.columns(getFieldTypeIndex(eStatus)).value = Now()
     End If
     On Error GoTo 0
     
-    Set OutMail = Nothing
+    Set oMailItem = Nothing
 End Function
 
-Private Function addAttachments(ByRef mail As Outlook.MailItem, ByRef currentRow As Range) As Boolean
+Private Function addAttachments(ByRef currentRow As Range, ByVal columnIndex As Integer) As Boolean
     Dim attachments() As String
     Dim filename As Variant
     Dim allAttachmentExists As Boolean
 
-    attachments = SplitRe(currentRow.Columns(columnAttachments).text, "[,;\n]")
+    attachments = SplitRe(currentRow.columns(columnIndex).text, "[,;\n]")
     If LBound(attachments) = 0 Then
         addAttachments = True
         Exit Function
@@ -262,27 +292,18 @@ Private Function addAttachments(ByRef mail As Outlook.MailItem, ByRef currentRow
     End If
     
     For Each filename In attachments
-        mail.attachments.Add filename
+        oMailItem.attachments.Add filename
     Next filename
 
     addAttachments = True
 End Function
 
-Private Function addRecipients(ByRef mail As Outlook.MailItem, ByRef currentRow As Range, ByVal rt As RecipientType) As Boolean
+Private Function addRecipients(ByRef currentRow As Range, ByVal columnIndex As Integer) As Boolean
     Dim recipients() As String
     Dim strRecipient As Variant
     Dim allValidEmails As Boolean
-    Dim invalidEmails As New Collection
     
-    Select Case rt
-    Case RecipientType.Field_To
-        recipients = SplitRe(currentRow.Columns(columnTo).text, "[,;\n]")
-    Case RecipientType.Field_CC
-        recipients = SplitRe(currentRow.Columns(columnCC).text, "[,;\n]")
-    Case RecipientType.Field_BCC
-        recipients = SplitRe(currentRow.Columns(columnBCC).text, "[,;\n]")
-    End Select
-
+    recipients = SplitRe(currentRow.columns(columnIndex).text, "[,;\n]")
     If LBound(recipients) = 0 Then
         addRecipients = True
         Exit Function
@@ -302,14 +323,19 @@ Private Function addRecipients(ByRef mail As Outlook.MailItem, ByRef currentRow 
         Exit Function
     End If
     
-    Select Case rt
-    Case RecipientType.Field_To
-        mail.To = Join(recipients, ";")
-    Case RecipientType.Field_CC
-        mail.CC = Join(recipients, ";")
-    Case RecipientType.Field_BCC
-        mail.BCC = Join(recipients, ";")
-    End Select
+    Dim oRecip As Outlook.recipient
+    For Each strRecipient In recipients
+        Set oRecip = oMailItem.recipients.Add(strRecipient)
+        
+        Select Case columnHeaderTypes(columnIndex)
+        Case eRecipient_To
+            oRecip.Type = olTo
+        Case eRecipient_CC
+            oRecip.Type = olCC
+        Case eRecipient_BCC
+            oRecip.Type = olBCC
+        End Select
+    Next strRecipient
 
     addRecipients = True
 End Function
@@ -350,19 +376,29 @@ Private Function SplitRe(ByVal text As String, ByVal pattern As String, Optional
     
 End Function
 
-Private Function recipientTypeToString(ByVal rt As RecipientType) As String
+Private Function FieldTypeToString(ByVal rt As FieldType) As String
     Select Case rt
-    Case RecipientType.Field_To
-        recipientTypeToString = "To"
-    Case RecipientType.Field_CC
-        recipientTypeToString = "CC"
-    Case RecipientType.Field_BCC
-        recipientTypeToString = "BCC"
+    Case FieldType.eRecipient_To
+        FieldTypeToString = "To"
+    Case FieldType.eRecipient_CC
+        FieldTypeToString = "CC"
+    Case FieldType.eRecipient_BCC
+        FieldTypeToString = "BCC"
+    Case FieldType.eSubject
+        FieldTypeToString = "Subject"
+    Case FieldType.eBody
+        FieldTypeToString = "Body"
+    Case FieldType.eAttachments
+        FieldTypeToString = "Files"
+    Case FieldType.eStatus
+        FieldTypeToString = "Status"
+    Case Else
+        FieldTypeToString = "Custom"
     End Select
 End Function
 
 Private Function mailRecipientTypeToString(ByVal rt As OlMailRecipientType) As String
-    mailRecipientTypeToString = recipientTypeToString(CInt(rt))
+    mailRecipientTypeToString = FieldTypeToString(CInt(rt))
 End Function
 
 ' Credits : https://officetricks.com/validate-email-address-vba-code-excel/
@@ -430,14 +466,178 @@ Private Function ReadFileContent(ByVal sFile As String) As String
     ts.Close
 End Function
 
-Private Sub OutMail_Close(Cancel As Boolean)
+Private Sub parseFieldsType()
+    Set columnHeaderTypes = New Collection
+    
+    Dim re As New RegExp
+    re.IgnoreCase = True
+
+    Dim c As Range
+    Dim headerName As String
+    For Each c In ws.UsedRange.columns
+        headerName = CStr(c.Value2(1, 1))
+        
+        re.pattern = "^To\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eRecipient_To
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^CC\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eRecipient_CC
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^BCC\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eRecipient_BCC
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^Subject\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eSubject
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^Body\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eBody
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^Attachments\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eAttachments
+            GoTo ContinueLoop
+        End If
+        
+        re.pattern = "^Status\s*"
+        If re.test(headerName) Then
+            columnHeaderTypes.Add FieldType.eStatus
+            GoTo ContinueLoop
+        End If
+        
+        columnHeaderTypes.Add FieldType.eCustomField
+        
+ContinueLoop:
+    Next c
+End Sub
+
+Private Function validateExpectedMinimumFields() As Boolean
+    Dim size As Integer
+    validateExpectedMinimumFields = False
+    
+    size = ArraySize(getFields(eRecipient_To))
+    If size = 0 Then
+        MsgBox "Expected at least one 'To' column"
+        Exit Function
+    End If
+    
+    size = ArraySize(getFields(eSubject))
+    If size = 0 Or size > 1 Then
+        MsgBox "Expected exactly one 'Subject' column. But " & Str(size) & " were provided"
+        Exit Function
+    End If
+
+    size = ArraySize(getFields(eBody))
+    If size = 0 Or size > 1 Then
+        MsgBox "Expected exactly one 'Body' column. But " & Str(size) & " were provided"
+        Exit Function
+    End If
+
+    size = ArraySize(getFields(eAttachments))
+    If size = 0 Or size > 1 Then
+        MsgBox "Expected at most one 'Attachments' column. But " & Str(size) & " were provided"
+        Exit Function
+    End If
+    
+    size = ArraySize(getFields(eStatus))
+    If size = 0 Or size > 1 Then
+        MsgBox "Expected at most one 'Status' column. But " & Str(size) & " were provided"
+        Exit Function
+    End If
+    
+    validateExpectedMinimumFields = True
+End Function
+
+Private Function getFields(ByVal ft As FieldType) As Integer()
+    Dim idx As Integer
+    Dim foundIndexes() As Integer
+    Dim foundCount As Integer
+    ReDim foundIndexes(1 To 255)
+    
+    foundCount = 0
+    For idx = 1 To columnHeaderTypes.Count
+        If columnHeaderTypes(idx) = ft Then
+            foundCount = foundCount + 1
+            foundIndexes(foundCount) = idx
+        End If
+    Next idx
+    
+    If foundCount > 0 Then
+        ReDim Preserve foundIndexes(1 To foundCount)
+        getFields = foundIndexes
+    End If
+    
+    
+End Function
+
+Private Function getFieldTypeIndex(ByVal ft As FieldType) As Integer
+    Dim idx As Integer
+    
+    For idx = 1 To columnHeaderTypes.Count
+        If columnHeaderTypes(idx) = ft Then
+            getFieldTypeIndex = idx
+            Exit Function
+        End If
+    Next idx
+End Function
+
+Private Function IsArrayAllocated(Arr As Variant) As Boolean
+    Dim N As Long
+    On Error Resume Next
+    
+    ' if Arr is not an array, return FALSE and get out.
+    If IsArray(Arr) = False Then
+        IsArrayAllocated = False
+        Exit Function
+    End If
+    
+    N = UBound(Arr, 1)
+    If (Err.Number = 0) Then
+        If LBound(Arr) <= UBound(Arr) Then
+            ' no error. array has been allocated.
+            IsArrayAllocated = True
+        Else
+            IsArrayAllocated = False
+        End If
+    Else
+        ' error. unallocated array
+        IsArrayAllocated = False
+    End If
+
+End Function
+
+Private Function ArraySize(Arr As Variant) As Integer
+    If IsArrayAllocated(Arr) = False Then
+        ArraySize = 0
+        Exit Function
+    End If
+    
+    ArraySize = UBound(Arr) - LBound(Arr) + 1
+    
+End Function
+
+Private Sub oMailItem_Close(Cancel As Boolean)
     ' User pressed Close button
     If currentMailUserAction = Unknown Then
         currentMailUserAction = Canceled
     End If
 End Sub
 
-Private Sub OutMail_Send(Cancel As Boolean)
+Private Sub oMailItem_Send(Cancel As Boolean)
     ' User pressed Send button
     currentMailUserAction = Send
 End Sub

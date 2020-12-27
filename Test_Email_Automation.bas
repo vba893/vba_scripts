@@ -36,7 +36,7 @@ Public Sub TestSendBatchEmail()
     ' Attachments                                   | Single column             | One line per file
     ' Status                                        | Single column             | If cell if not empty, row will be skipped
     
-    result = c.SetSignature(signatureName:="SignatureName", confirmSignature:=True)
+    result = c.SetSignature(signatureName:="SignatureName", confirmSignature:=False)
     If Not result Then
         Exit Sub
     End If

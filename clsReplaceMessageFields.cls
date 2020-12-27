@@ -23,7 +23,7 @@ End Function
 
 Private Function getFieldNames() As String()
     Dim c As Range
-    For Each c In ws.UsedRange.Columns
+    For Each c In ws.UsedRange.columns
         fieldNames.Add CStr(c.Value2(1, 1))
         fieldColumnIndexes.Add c.Column
     Next c
@@ -41,12 +41,13 @@ Private Function replaceFieldsWithValues(ByVal message As String, ByVal rowSourc
     For i = 1 To fieldNames.Count
         regEx.pattern = "<" & fieldNames.Item(i) & ">"
         Set cell = ws.UsedRange.cells(rowSourceValues, fieldColumnIndexes.Item(i))
-        value = CStr(Trim(cell.text))
         
+        value = CStr(Trim(cell.text))
+        value = Replace(value, "$", "")
+        value = Trim(value)
+    
         message = regEx.Replace(message, value)
     Next i
-    
-    message = Replace(message, "  ", " ")
     
     replaceFieldsWithValues = message
 End Function
